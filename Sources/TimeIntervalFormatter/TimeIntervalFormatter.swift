@@ -1,24 +1,34 @@
 import Foundation
 
 /// A formatter that converts between TimeIntervals and their textual representations.
-public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
+public class TimeIntervalFormatter : Formatter, Codable {
     /// Available styles for TimeInterval formatting
-    public enum Style : Codable {
+    public enum Style : Codable, CaseIterable {
         /// Use all available elements, days, hours, minutes, seconds, fractions of seconds
         ///
-        /// Note: Fractions are controlled by `TimeIntervalFormatter.fractionDigits` property
+        /// - Attention: Fractions of seconds are controlled by `TimeIntervalFormatter.fractionDigits` property
         case full
         /// Use minimum amount of elements to present the value completely (dynamically alters the included elements)
         ///
-        /// Note: Fractions are controlled by `TimeIntervalFormatter.fractionDigits` property
+        /// - Attention: Fractions of seconds are controlled by `TimeIntervalFormatter.fractionDigits` property
         case required
         /// Use days, hours, minutes, seconds, fractions of seconds (same as `full`)
         ///
-        /// Note: Fractions are controlled by `TimeIntervalFormatter.fractionDigits` property
+        /// - Attention: Fractions of seconds are controlled by `TimeIntervalFormatter.fractionDigits` property
         case dhhmmssf
+        /// Use days, hours, minutes
+        ///
+        /// - Attention: Seconds and fractions of seconds are not available in this style,
+        ///  regardless of the `TimeIntervalFormatter.fractionDigits` property's value.
+        case dhhmm
+        /// Use hours, minutes
+        ///
+        /// - Attention: Seconds and fractions of seconds are not available in this style,
+        ///  regardless of the `TimeIntervalFormatter.fractionDigits` property's value.
+        case hhmm
         /// Use only hours, minutes, seconds, fractions of seconds
         ///
-        /// Note: Fractions are controlled by `TimeIntervalFormatter.fractionDigits` property
+        /// - Attention: Fractions of seconds are controlled by `TimeIntervalFormatter.fractionDigits` property
         case hhmmssf
         /// Use only minutes, seconds, fractions of seconds
         ///
@@ -31,20 +41,81 @@ public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
     }
     
     /// Initialize TimeIntervalFormatter
-    public init() {}
-    
+    override public init() {
+        super.init()
+    }
+
     /// Initialize TimeIntervalFormatter with specific style
     public init(_ style:TimeIntervalFormatter.Style) {
         self.style = style
+        super.init()
+    }
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
     /// Convert `String` to TimeInterval value (if possible).
     ///
-    /// For successful conversion fractionDigits value and formatter symbols must match the expected input string symbols.
+    /// For successful conversion fractionDigits value and formatter symbols must match the
+    /// expected input string symbols.
+    ///
+    /// Example
+    ///
+    ///     let formatter = TimeIntervalFormatter()
+    ///     // default style is `.dhhmmssf`
+    ///     formatter.timeInterval(from: "1:23:45:32") // Optional(45296.7)
+    ///
+    ///     formatter.style = .hhmmssf
+    ///     formatter.hoursSeparator = "h "
+    ///     formatter.minutesSeparator = "m "
+    ///     formatter.secondsSeparator = "s"
+    ///     formatter.fractionSeparator = "´"
+    ///     formatter.fractionDigits = 1
+    ///     formatter.timeInterval(from: "12h 34m 56´7s") // Optional(45296.7)
+    ///
+    /// - Attention: Parsing TimeInterval value with `.dhhmm` or `.hhmm` styles expects
+    /// the `minutesSeparator`. Default `minutesSeparator` is `:` which leads to
+    /// unintuitive format for the expected string (see example below).
+    ///
+    /// Example
+    ///
+    ///     let formatter = TimeIntervalFormatter()
+    ///     formatter.style = .hhmm
+    ///     formatter.timeInterval(from: "12:34") // nil
+    ///     // above failed as the default minutesSeparator ":"
+    ///     // was not present at the end
+    ///
+    ///     formatter.timeInterval(from: "12:34:") // Optional(45240.0)
+    ///     // above succeeds as the default minutesSeparator
+    ///     // was present at the end
+    ///
+    ///     formatter.minutesSeparator = "" // workaround
+    ///     formatter.timeInterval(from: "12:34") // Optional(45240.0)
+    
     public func timeInterval(from:String) -> TimeInterval? {
         var parse = from // copy
         do {
             // Common for all styles
-            let multiplier = try _parseMultiplier(&parse)
+            let multiplier = try _parseSign(&parse)
+
+            // Special cases .hhmm and .dhhmm
+            if style == .hhmm {
+                try _consumeSeparator(&parse, separator: minutesSeparator)
+                let mm = try _parseNumber(&parse, count: 2, validRange: 0...59)
+                try _consumeSeparator(&parse, separator: hoursSeparator)
+                let hh = try _parseNumber(&parse, count: 2, validRange: 0...23)
+                return multiplier * TimeInterval(mm * 60 + hh * 3600)
+            }
+            else if style == .dhhmm {
+                try _consumeSeparator(&parse, separator: minutesSeparator)
+                let mm = try _parseNumber(&parse, count: 2, validRange: 0...59)
+                try _consumeSeparator(&parse, separator: hoursSeparator)
+                let hh = try _parseNumber(&parse, count: 2, validRange: 0...23)
+                try _consumeSeparator(&parse, separator: daysSeparator)
+                let d = try _parseNumber(&parse, count: parse.count, validRange: 0...Self.decade)
+                return multiplier * TimeInterval(mm * 60 + hh * 3600 + d * 86400)
+            }
+            
+            // Rest of the cases
             try _consumeSeparator(&parse, separator: secondsSeparator)
             let expectedFractionCount = Swift.max(0, Swift.min(fractionDigits, Self.maxFractionDigits))
             var fractions:TimeInterval = 0.0
@@ -99,6 +170,10 @@ public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
         switch style {
         case .full, .dhhmmssf, .required:
             return "\(symbol)\(daysSeparator)\(symbol)\(symbol)\(hoursSeparator)\(symbol)\(symbol)\(minutesSeparator)\(symbol)\(symbol)\(fs)\(secondsSeparator)"
+        case .dhhmm:
+            return "\(symbol)\(daysSeparator)\(symbol)\(symbol)\(hoursSeparator)\(symbol)\(symbol)\(minutesSeparator)"
+        case .hhmm:
+            return "\(symbol)\(symbol)\(hoursSeparator)\(symbol)\(symbol)\(minutesSeparator)"
         case .hhmmssf:
             return "\(symbol)\(symbol)\(hoursSeparator)\(symbol)\(symbol)\(minutesSeparator)\(symbol)\(symbol)\(fs)\(secondsSeparator)"
         case .mmssf:
@@ -138,36 +213,44 @@ public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
         
         var overflow = false
         switch s {
-        case .dhhmmssf, .full:
+        case .dhhmmssf, .full, .dhhmm:
             if integer > Self.decade {
                 let unit = "\(overflowSymbol)\(overflowSymbol)"
-                stack.append( "\(overflowSymbol)\(daysSeparator)\(unit)\(hoursSeparator)\(unit)\(minutesSeparator)\(unit)\(secondsSeparator)"
-                )
+                stack.append( "\(overflowSymbol)\(daysSeparator)\(unit)\(hoursSeparator)\(unit)\(minutesSeparator)")
                 overflow = true
+                if s != .dhhmm {
+                    stack.append("\(unit)\(secondsSeparator)")
+                }
             }
             else {
                 stack.append(
-                    String(format: "%d%@%02d%@%02d%@%02d",
+                    String(format: "%d%@%02d%@%02d%@",
                            ddd, daysSeparator,
                            hh, hoursSeparator,
-                           mm, minutesSeparator,
-                           ss)
+                           mm, minutesSeparator)
                 )
+                if s != .dhhmm {
+                    stack.append(String(format: "%02d%@", ss, _emptyOrSeconds))
+                }
             }
-        case .hhmmssf:
+        case .hhmmssf, .hhmm:
             if integer > 86399 {
                 let unit = "\(overflowSymbol)\(overflowSymbol)"
-                stack.append( "\(unit)\(hoursSeparator)\(unit)\(minutesSeparator)\(unit)\(secondsSeparator)"
-                )
+                stack.append( "\(unit)\(hoursSeparator)\(unit)\(minutesSeparator)")
+                if s != .hhmm {
+                    stack.append( "\(unit)\(secondsSeparator)")
+                }
                 overflow = true
             }
             else {
                 stack.append(
-                    String(format: "%02d%@%02d%@%02d",
+                    String(format: "%02d%@%02d%@",
                            hh, hoursSeparator,
-                           mm, minutesSeparator,
-                           ss)
+                           mm, minutesSeparator)
                 )
+                if s != .hhmm {
+                    stack.append(String(format: "%02d%@", ss, _emptyOrSeconds))
+                }
             }
         case .mmssf:
             if integer > 3599 {
@@ -176,7 +259,9 @@ public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
                 overflow = true
             }
             else {
-                stack.append(String(format: "%02d%@%02d", mm, minutesSeparator, ss))
+                stack.append(String(format: "%02d%@%02d%@",
+                                    mm, minutesSeparator,
+                                    ss, _emptyOrSeconds))
             }
         case .ssf:
             if integer > 59 {
@@ -184,11 +269,11 @@ public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
                 overflow = true
             }
             else {
-                stack.append(String(format: "%02d", integer))
+                stack.append(String(format: "%02d%@", integer, secondsSeparator))
             }
         case .required: fatalError() // .required is never used here
         }
-        if (1...Self.maxFractionDigits).contains(fractionDigits) {
+        if _fractionDigits > 0, style != .dhhmm, style != .hhmm {
             if overflow {
                 stack.append("\(fractionSeparator)\(String(repeating: overflowSymbol, count: fractionDigits))")
             }
@@ -202,13 +287,13 @@ public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
     private func _finalStyle(_ style:TimeIntervalFormatter.Style, _ timeInterval:TimeInterval) -> TimeIntervalFormatter.Style {
         let adjustedStyle:TimeIntervalFormatter.Style
         if style == .required {
-            if timeInterval >= 86400 {
+            if timeInterval.magnitude >= 86400 {
                 adjustedStyle = .dhhmmssf
             }
-            else if timeInterval >= 3600 {
+            else if timeInterval.magnitude >= 3600 {
                 adjustedStyle = .hhmmssf
             }
-            else if timeInterval >= 60 {
+            else if timeInterval.magnitude >= 60 {
                 adjustedStyle = .mmssf
             }
             else {
@@ -258,16 +343,26 @@ public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
     public var style:TimeIntervalFormatter.Style = .required
     /// Number of fraction digits to show (up to 6 digits).
     ///
-    /// Default value is `0` (=don't show fractions).
+    /// Default value is `0` (=don't show fractions of seconds).
+    ///
+    /// - Important: `fractionDigits` property will return `0` if formatter style doesn't have a seconds
+    ///  component present (like for example `.dhhmm` and `.hhmm` styles).
     public var fractionDigits:Int {
         set (value) {
             self._fractionDigits = value
         }
         get {
-            return Swift.min(Swift.max(0, self._fractionDigits), Self.maxFractionDigits)
+            switch style {
+            case .dhhmm, .hhmm: return 0
+            default: return Swift.min(Swift.max(0, self._fractionDigits), Self.maxFractionDigits)
+
+            }
         }
     }
     private var _fractionDigits:Int = 0
+    private var _emptyOrSeconds:String {
+        _fractionDigits > 0 ? "" : "\(secondsSeparator)"
+    }
     /// Use this symbol in-place of numbers when TimeInterval overflows the given style.
     ///
     /// Default symbol: `*`
@@ -344,7 +439,7 @@ public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
 fileprivate enum ParseFailure : Error { case fail }
 // MARK: -
 fileprivate extension TimeIntervalFormatter {
-    private func _parseMultiplier(_ str:inout String) throws -> TimeInterval {
+    private func _parseSign(_ str:inout String) throws -> TimeInterval {
         switch (negativeSymbol.isEmpty, positiveSymbol.isEmpty) {
         case (true, true): // Expect numbers
             if let c = str.first, c.isNumber {

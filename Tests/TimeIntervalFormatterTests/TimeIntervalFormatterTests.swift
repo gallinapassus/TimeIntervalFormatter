@@ -106,6 +106,128 @@ final class TimeIntervalFormatterTests: XCTestCase {
         formatter.nanSymbol = "#"
         XCTAssertEqual("#:##:##:##.#", formatter.string(from: nil))
     }
+    func testStyles() {
+        do {
+            let tests:[(Int,TimeIntervalFormatter.Style,TimeInterval?,String)] = [
+                (0, .full,             -61.3, "-0d:00h:01m:01s"),
+                (0, .required,         -61.3, "-01m:01s"),
+                (0, .dhhmmssf,         -61.3, "-0d:00h:01m:01s"),
+                (0, .dhhmm,            -61.3, "-0d:00h:01m"),
+                (0, .hhmm,             -61.3, "-00h:01m"),
+                (0, .hhmmssf,          -61.3, "-00h:01m:01s"),
+                (0, .mmssf,            -61.3, "-01m:01s"),
+                (0, .ssf,              -61.3, "-**"),
+                (1, .full,             -61.3, "-0d:00h:01m:01.3s"),
+                (1, .required,         -61.3, "-01m:01.3s"),
+                (1, .dhhmmssf,         -61.3, "-0d:00h:01m:01.3s"),
+                (1, .dhhmm,            -61.3, "-0d:00h:01m"),
+                (1, .hhmm,             -61.3, "-00h:01m"),
+                (1, .hhmmssf,          -61.3, "-00h:01m:01.3s"),
+                (1, .mmssf,            -61.3, "-01m:01.3s"),
+                (1, .ssf,              -61.3, "-**.*"),
+                (0, .full,             -59.7, "-0d:00h:01m:00s"),
+                (0, .required,         -59.7, "-**"),
+                (0, .dhhmmssf,         -59.7, "-0d:00h:01m:00s"),
+                (0, .dhhmm,            -59.7, "-0d:00h:01m"),
+                (0, .hhmm,             -59.7, "-00h:01m"),
+                (0, .hhmmssf,          -59.7, "-00h:01m:00s"),
+                (0, .mmssf,            -59.7, "-01m:00s"),
+                (0, .ssf,              -59.7, "-**"),
+                (1, .full,             -59.7, "-0d:00h:00m:59.7s"),
+                (1, .required,         -59.7, "-59s.7s"),
+                (1, .dhhmmssf,         -59.7, "-0d:00h:00m:59.7s"),
+                (1, .dhhmm,            -59.7, "-0d:00h:01m"),
+                (1, .hhmm,             -59.7, "-00h:01m"),
+                (1, .hhmmssf,          -59.7, "-00h:00m:59.7s"),
+                (1, .mmssf,            -59.7, "-00m:59.7s"),
+                (1, .ssf,              -59.7, "-59s.7s"),
+                (0, .full,             59.67, "0d:00h:01m:00s"),
+                (0, .required,         59.67, "**"),
+                (0, .dhhmmssf,         59.67, "0d:00h:01m:00s"),
+                (0, .dhhmm,            59.67, "0d:00h:01m"),
+                (0, .hhmm,             59.67, "00h:01m"),
+                (0, .hhmmssf,          59.67, "00h:01m:00s"),
+                (0, .mmssf,            59.67, "01m:00s"),
+                (0, .ssf,              59.67, "**"),
+                (1, .full,             59.67, "0d:00h:00m:59.7s"),
+                (1, .required,         59.67, "59s.7s"),
+                (1, .dhhmmssf,         59.67, "0d:00h:00m:59.7s"),
+                (1, .dhhmm,            59.67, "0d:00h:01m"),
+                (1, .hhmm,             59.67, "00h:01m"),
+                (1, .hhmmssf,          59.67, "00h:00m:59.7s"),
+                (1, .mmssf,            59.67, "00m:59.7s"),
+                (1, .ssf,              59.67, "59s.7s"),
+                (0, .full,             60.9, "0d:00h:01m:01s"),
+                (0, .required,         60.9, "01m:01s"),
+                (0, .dhhmmssf,         60.9, "0d:00h:01m:01s"),
+                (0, .dhhmm,            60.9, "0d:00h:01m"),
+                (0, .hhmm,             60.9, "00h:01m"),
+                (0, .hhmmssf,          60.9, "00h:01m:01s"),
+                (0, .mmssf,            60.9, "01m:01s"),
+                (0, .ssf,              60.9, "**"),
+                (1, .full,             60.9, "0d:00h:01m:00.9s"),
+                (1, .required,         60.9, "01m:00.9s"),
+                (1, .dhhmmssf,         60.9, "0d:00h:01m:00.9s"),
+                (1, .dhhmm,            60.9, "0d:00h:01m"),
+                (1, .hhmm,             60.9, "00h:01m"),
+                (1, .hhmmssf,          60.9, "00h:01m:00.9s"),
+                (1, .mmssf,            60.9, "01m:00.9s"),
+                (1, .ssf,              60.9, "**.*"),
+                (0, .full,             nil, "-d:--h:--m:--s"),
+                (0, .required,         nil, "-d:--h:--m:--s"),
+                (0, .dhhmmssf,         nil, "-d:--h:--m:--s"),
+                (0, .dhhmm,            nil, "-d:--h:--m"),
+                (0, .hhmm,             nil, "--h:--m"),
+                (0, .hhmmssf,          nil, "--h:--m:--s"),
+                (0, .mmssf,            nil, "--m:--s"),
+                (0, .ssf,              nil, "--s"),
+                (1, .full,             nil, "-d:--h:--m:--.-s"),
+                (1, .required,         nil, "-d:--h:--m:--.-s"),
+                (1, .dhhmmssf,         nil, "-d:--h:--m:--.-s"),
+                (1, .dhhmm,            nil, "-d:--h:--m"),
+                (1, .hhmm,             nil, "--h:--m"),
+                (1, .hhmmssf,          nil, "--h:--m:--.-s"),
+                (1, .mmssf,            nil, "--m:--.-s"),
+                (1, .ssf,              nil, "--.-s"),
+            ]
+            let formatter = TimeIntervalFormatter()
+            formatter.daysSeparator = "d:"
+            formatter.hoursSeparator = "h:"
+            formatter.secondsSeparator = "s"
+            // Generate answers :-)
+            /*
+            for v in [-61.3, -59.7, 59.67, 60.9, nil] {
+                for f in [0,1] {
+                    formatter.fractionDigits = f
+                    for s in TimeIntervalFormatter.Style.allCases {
+                        switch s {
+                        case .dhhmm, .hhmm:
+                            formatter.minutesSeparator = "m"
+                        default:
+                            formatter.minutesSeparator = "m:"
+                        }
+                        //formatter.minutesSeparator = s == .dhhmm ? "m" : "m:"
+                        formatter.style = s
+                        print("(\(f), .\(s)," + String(repeating: " ", count: 16-"\(s)".count),
+                              v == nil ? "nil," : "\(v!),", "\"\(formatter.string(from: v))\"),")
+                    }
+                }
+            }*/
+            
+            for (fd,s,v,expected) in tests {
+                formatter.style = s
+                formatter.fractionDigits = fd
+                switch s {
+                case .dhhmm, .hhmm:
+                    formatter.minutesSeparator = "m"
+                default:
+                    formatter.minutesSeparator = "m:"
+                }
+                let str = formatter.string(from: v)
+                XCTAssertEqual(str, expected)
+            }
+        }
+    }
     func test_overAndUnderflows() {
         let year = TimeInterval(60 * 60 * 24 * 365)
         let decade = year * 10
@@ -183,6 +305,32 @@ final class TimeIntervalFormatterTests: XCTestCase {
             XCTAssertEqual(formatter.timeInterval(from: "12:34.567"), 754.567)
             XCTAssertEqual(formatter.timeInterval(from: "01:01:02.345"), 3662.345)
         }
+        do {
+            let formatter = TimeIntervalFormatter()
+            formatter.fractionDigits = 3
+            XCTAssertEqual(formatter.fractionDigits, 3)
+            formatter.style = .hhmm
+            XCTAssertEqual(formatter.fractionDigits, 0)
+            XCTAssertEqual(formatter.timeInterval(from: "12:34:"), 45240.0)
+            XCTAssertEqual(formatter.timeInterval(from: "-12:34:"), -45240.0)
+            formatter.minutesSeparator = "" // This is gotcha
+            XCTAssertEqual(formatter.timeInterval(from: "12:34"), 45240.0)
+            formatter.style = .dhhmm
+            XCTAssertEqual(formatter.fractionDigits, 0)
+            XCTAssertEqual(formatter.timeInterval(from: "1:23:45"), 171900.0)
+        }
+        do {
+            let formatter = TimeIntervalFormatter()
+            XCTAssertEqual(formatter.timeInterval(from: "1:23:45:32"), Optional(171932.0)) // Optional(171932.0)
+
+            formatter.style = .hhmmssf
+            formatter.hoursSeparator = "h "
+            formatter.minutesSeparator = "m "
+            formatter.secondsSeparator = "s"
+            formatter.fractionSeparator = "´"
+            formatter.fractionDigits = 1
+            XCTAssertEqual(formatter.timeInterval(from: "12h 34m 56´7s"), Optional(45296.7))
+        }
     }
     func test_randomTimeIntervals() {
         do {
@@ -211,10 +359,5 @@ final class TimeIntervalFormatterTests: XCTestCase {
         let formatter = TimeIntervalFormatter()
         formatter.style = .full
         formatter.fractionDigits = 2
-//        print(-227569629.57)
-//        XCTAssertEqual(formatter.string(from: -227569629.57), "-2633:21:47:09.57")
-        do {
-            XCTAssertEqual(0.19, 0.29, accuracy: 0.1)
-        }
     }
 }
