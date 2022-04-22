@@ -41,7 +41,55 @@ public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
     ///
     /// For successful conversion fractionDigits value and formatter symbols must match the expected input string symbols.
     public func timeInterval(from:String) -> TimeInterval? {
-        fatalError("Not implemented.")
+        var parse = from // copy
+        do {
+            // Common for all styles
+            let multiplier = try _parseMultiplier(&parse)
+            try _consumeSeparator(&parse, separator: secondsSeparator)
+            let expectedFractionCount = Swift.max(0, Swift.min(fractionDigits, Self.maxFractionDigits))
+            var fractions:TimeInterval = 0.0
+            if expectedFractionCount > 0 {
+                fractions = try TimeInterval(_parseNumber(&parse, count: expectedFractionCount, validRange: 0...999999)) / pow(10.0, TimeInterval(expectedFractionCount))
+                try _consumeSeparator(&parse, separator: fractionSeparator)
+            }
+            let ss = try _parseNumber(&parse, count: 2, validRange: 0...59)
+            
+            var accumulated = TimeInterval(ss) + fractions
+            // Are we expecting minutes?
+            if style == .ssf || style == .required, parse.isEmpty {
+                return multiplier * accumulated
+            }
+            if style == .mmssf || style == .hhmmssf || style == .dhhmmssf || style == .full || style == .required {
+                try _consumeSeparator(&parse, separator: minutesSeparator)
+                let mm = try _parseNumber(&parse, count: 2, validRange: 0...59)
+                accumulated += TimeInterval(mm * 60)
+                if style == .mmssf || style == .required, parse.isEmpty {
+                    return multiplier * accumulated
+                }
+            }
+            if style == .hhmmssf || style == .dhhmmssf || style == .full || style == .required {
+                try _consumeSeparator(&parse, separator: hoursSeparator)
+                let hh = try _parseNumber(&parse, count: 2, validRange: 0...23)
+                accumulated += TimeInterval(hh * 3600)
+                if style == .hhmmssf || style == .required, parse.isEmpty {
+                    return multiplier * accumulated
+                }
+            }
+            if style == .dhhmmssf || style == .full || style == .required {
+                try _consumeSeparator(&parse, separator: daysSeparator)
+                let d = try _parseNumber(&parse, count: parse.count, validRange: 0...Self.decade)
+                accumulated += TimeInterval(d * 86400)
+                if parse.isEmpty {
+                    return multiplier * accumulated
+                }
+                else {
+                    throw ParseFailure.fail
+                }
+            }
+            throw ParseFailure.fail
+        } catch {
+            return nil
+        }
     }
     /// Generate properly formatted string indicating overflow/underflow or nil value.
     private func _failed(symbol:String) -> String {
@@ -66,7 +114,7 @@ public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
         let multiplier = pow(10.0, Double(fractionDigits))
         let roundedFraction = (((value - Double(Int(value))) * multiplier).rounded() / multiplier).magnitude
         let roundedFractionAsInt = Int(roundedFraction * multiplier)
-        let formatString = "%0\(fractionDigits)d%@"
+        let formatString = "%0\(_fractionDigits)d%@"
 
         let integer:Int
         let formattedFractions:String
@@ -79,14 +127,14 @@ public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
             formattedFractions = String(format: formatString, roundedFractionAsInt, secondsSeparator)
         }
 
-        let ddd = integer / 86400
-        let dt = ddd * 86400
-        let _h = integer - dt
-        let hh = _h / 3600
-        let ht = hh * 3600
-        let _m = _h - ht
-        let mm = _m / 60
-        let ss = _m - (mm * 60)
+        let ddd:Int = integer / 86400
+        let dt:Int = ddd * 86400
+        let _h:Int = integer - dt
+        let hh:Int = _h / 3600
+        let ht:Int = hh * 3600
+        let _m:Int = _h - ht
+        let mm:Int = _m / 60
+        let ss:Int = _m - (mm * 60)
         
         var overflow = false
         switch s {
@@ -174,11 +222,26 @@ public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
     }
     /// Convert TimeInterval value to a formatted `String`
     ///
-    /// Example
+    /// String presentation is a rounded representation of the TimeInterval value for the selected style.
+    /// For rounding, formatter uses the rounded() method, which uses the .toNearestOrAwayFromZero
+    /// rounding rule, where a value halfway between two integral values is rounded to the one with
+    /// greater magnitude.
     ///
-    ///     let interval = TimeInterval(123.51)
-    ///     formatter.stype = .mmssf
-    ///     formatter.string(from: interval) // "02:04"
+    /// A non-zero `fractionDigits` value will return best rounded approximation for the TimeInterval.
+    ///
+    /// Examples
+    ///
+    ///     let formatter = TimeIntervalFormatter()
+    ///     formatter.style = .mmssf
+    ///     let a = TimeInterval(123.51)
+    ///     formatter.string(from: a) // "02:04"
+    ///     let b = TimeInterval(59.51)
+    ///     formatter.string(from: b) // "01:00"
+    ///
+    ///     let c = TimeInterval(-123.50)
+    ///     formatter.string(from: c) // "-02:04"
+    ///     let d = TimeInterval(-123.49)
+    ///     formatter.string(from: c) // "-02:03"
     public func string(from: TimeInterval?) -> String {
 
         guard let from = from else {
@@ -196,7 +259,15 @@ public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
     /// Number of fraction digits to show (up to 6 digits).
     ///
     /// Default value is `0` (=don't show fractions).
-    public var fractionDigits:Int = 0
+    public var fractionDigits:Int {
+        set (value) {
+            self._fractionDigits = value
+        }
+        get {
+            return Swift.min(Swift.max(0, self._fractionDigits), Self.maxFractionDigits)
+        }
+    }
+    private var _fractionDigits:Int = 0
     /// Use this symbol in-place of numbers when TimeInterval overflows the given style.
     ///
     /// Default symbol: `*`
@@ -268,4 +339,76 @@ public class TimeIntervalFormatter /* NOTE: Does not conform to Formatter */ {
     /// Any time intervals (positive or negative) reaching out beyond one decade will cause formatter to
     /// return overflow/underflow representation.
     private static let validRange = -TimeInterval(decade)...TimeInterval(decade)
+}
+
+fileprivate enum ParseFailure : Error { case fail }
+// MARK: -
+fileprivate extension TimeIntervalFormatter {
+    private func _parseMultiplier(_ str:inout String) throws -> TimeInterval {
+        switch (negativeSymbol.isEmpty, positiveSymbol.isEmpty) {
+        case (true, true): // Expect numbers
+            if let c = str.first, c.isNumber {
+                return 1.0
+            }
+            else {
+                throw ParseFailure.fail
+            }
+        case (false, true): // Expect 'negativeSymbol' or number
+            if let r = str.range(of: negativeSymbol), r.lowerBound == str.startIndex {
+                str = "\(str[r.upperBound...])"
+                return -1.0
+            }
+            else if let c = str.first, c.isNumber {
+                // Counter intuitive, but yes, this is positive
+                return 1.0
+            }
+            else {
+                throw ParseFailure.fail
+            }
+        case (true, false): // Expect 'positiveSymbol' or number
+            if let r = str.range(of: positiveSymbol), r.lowerBound == str.startIndex {
+                str = "\(str[r.upperBound...])"
+                return 1.0
+            }
+            else if let c = str.first, c.isNumber {
+                // Counter intuitive, but yes, this is negative
+                return -1.0
+            }
+            else {
+                throw ParseFailure.fail
+            }
+        case (false, false): // Expect 'negativeSymbol' or 'positiveSymbol'
+            if let r = str.range(of: negativeSymbol) {
+                str = "\(str[r.upperBound...])"
+                return -1.0
+            }
+            else if let r = str.range(of: positiveSymbol) {
+                str = "\(str[r.upperBound...])"
+                return 1.0
+            }
+            else {
+                throw ParseFailure.fail
+            }
+        }
+    }
+    private func _parseNumber(_ str:inout String, count:Int, validRange:ClosedRange<Int>) throws -> Int {
+        guard let numberStart = str.index(str.endIndex, offsetBy: -count, limitedBy: str.startIndex),
+              let numberPart = Int("\(str[numberStart...])", radix: 10),
+              validRange.contains(numberPart) else {
+            throw ParseFailure.fail
+        }
+        str = "\(str[..<numberStart])"
+        return numberPart
+    }
+    // MARK: -
+    private func _consumeSeparator(_ str:inout String, separator:String) throws {
+        guard separator.isEmpty == false else {
+            return
+        }
+        guard let separatorStart = str.index(str.endIndex, offsetBy: -separator.count, limitedBy: str.startIndex),
+            str[separatorStart...] == separator else {
+            throw ParseFailure.fail
+        }
+        str = "\(str[..<separatorStart])"
+    }
 }
