@@ -389,9 +389,24 @@ final class TimeIntervalFormatterTests: XCTestCase {
             }
         }
     }
-    func test_debug() {
+    func test_nan_inf_pi() {
         let formatter = TimeIntervalFormatter()
         formatter.style = .full
         formatter.fractionDigits = 2
+        do {
+            let ti = TimeInterval.nan
+            XCTAssertEqual(formatter.string(from: ti), "*:**:**:**.**")
+            XCTAssertEqual(formatter.string(from: -ti), "*:**:**:**.**")
+        }
+        do {
+            let ti = TimeInterval.infinity
+            XCTAssertEqual(formatter.string(from: ti), "*:**:**:**.**")
+            XCTAssertEqual(formatter.string(from: -ti), "*:**:**:**.**")
+        }
+        do {
+            let ti = TimeInterval.pi
+            XCTAssertEqual(formatter.string(from: ti), "0:00:00:03.14")
+            XCTAssertEqual(formatter.string(from: -ti), "-0:00:00:03.14")
+        }
     }
 }
