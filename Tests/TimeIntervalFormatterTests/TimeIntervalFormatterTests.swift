@@ -21,13 +21,16 @@ final class TimeIntervalFormatterTests: XCTestCase {
         XCTAssertEqual(formatter.string(from: nil), "--:--.--")
         XCTAssertEqual(formatter.string(from: 123.459), "02:03.46")
         XCTAssertEqual(formatter.string(from: -123.455), "-02:03.45")
-        formatter.daysSeparator = "d"
-        formatter.hoursSeparator = "h"
-        formatter.minutesSeparator = "m"
-        formatter.secondsSeparator = "s"
+        formatter.daysUnitSymbol = "d"
+        formatter.hoursUnitSymbol = "h"
+        formatter.minutesUnitSymbol = "m"
+        formatter.secondsUnitSymbol = "s"
         formatter.fractionSeparator = "´"
+        formatter.daysSeparator = ""
+        formatter.hoursSeparator = ""
+        formatter.minutesSeparator = ""
         XCTAssertEqual(formatter.string(from: 123.45), "02m03´45s")
-        formatter.positiveSymbol = "+"
+        formatter.positiveTimeIntervalSymbol = "+"
         XCTAssertEqual(formatter.string(from: 123.45), "+02m03´45s")
         XCTAssertEqual(formatter.string(from: 59.99), "+00m59´99s")
         formatter.fractionDigits = 1
@@ -70,6 +73,16 @@ final class TimeIntervalFormatterTests: XCTestCase {
             XCTAssertEqual(formatter.string(from: c), "-02:04")
             let d = TimeInterval(-123.49)
             XCTAssertEqual(formatter.string(from: d), "-02:03")
+        }
+        do {
+            let formatter = TimeIntervalFormatter()
+            formatter.style = .mmssf
+            formatter.fractionDigits = 2
+            formatter.fractionSeparator = "´"
+            let interval = TimeInterval(123.45)
+             //
+            XCTAssertEqual(formatter.string(from: interval), "02:03´45")
+            XCTAssertTrue(interval == formatter.timeInterval(from: "02:03´45"))
         }
     }
     func test_fractionDigitClamping() {
@@ -191,9 +204,13 @@ final class TimeIntervalFormatterTests: XCTestCase {
                 (1, .ssf,              nil, "--.-s"),
             ]
             let formatter = TimeIntervalFormatter()
-            formatter.daysSeparator = "d:"
-            formatter.hoursSeparator = "h:"
-            formatter.secondsSeparator = "s"
+            formatter.daysSeparator = ":"
+            formatter.daysUnitSymbol = "d"
+            formatter.hoursSeparator = ":"
+            formatter.hoursUnitSymbol = "h"
+            formatter.minutesSeparator = ":"
+            formatter.minutesUnitSymbol = "m"
+            formatter.secondsUnitSymbol = "s"
             // Generate answers :-)
             /*
             for v in [-61.3, -59.7, 59.67, 60.9, nil] {
@@ -217,12 +234,6 @@ final class TimeIntervalFormatterTests: XCTestCase {
             for (fd,s,v,expected) in tests {
                 formatter.style = s
                 formatter.fractionDigits = fd
-                switch s {
-                case .dhhmm, .hhmm:
-                    formatter.minutesSeparator = "m"
-                default:
-                    formatter.minutesSeparator = "m:"
-                }
                 let str = formatter.string(from: v)
                 XCTAssertEqual(str, expected)
             }
@@ -269,9 +280,9 @@ final class TimeIntervalFormatterTests: XCTestCase {
             ]
             var i = 0
             for n in ["", "-"] {
-                formatter.negativeSymbol = n
+                formatter.negativeTimeIntervalSymbol = n
                 for p in ["", "+"] {
-                    formatter.positiveSymbol = p
+                    formatter.positiveTimeIntervalSymbol = p
                     for t in ["-12:34", "+12:34", "12:34"] {
                         let ti = formatter.timeInterval(from: t)
                         /*
@@ -291,7 +302,7 @@ final class TimeIntervalFormatterTests: XCTestCase {
             let formatter = TimeIntervalFormatter()
             formatter.style = .mmssf
             formatter.fractionDigits = 3
-            formatter.secondsSeparator = ""
+            formatter.secondsUnitSymbol = ""
             formatter.fractionSeparator = "."
             XCTAssertEqual(formatter.timeInterval(from: "-02:04.091"), -124.091)
             formatter.style = .hhmmssf
@@ -326,10 +337,33 @@ final class TimeIntervalFormatterTests: XCTestCase {
             formatter.style = .hhmmssf
             formatter.hoursSeparator = "h "
             formatter.minutesSeparator = "m "
-            formatter.secondsSeparator = "s"
+            formatter.secondsUnitSymbol = "s"
             formatter.fractionSeparator = "´"
             formatter.fractionDigits = 1
             XCTAssertEqual(formatter.timeInterval(from: "12h 34m 56´7s"), Optional(45296.7))
+        }
+    }
+    func test_timeIntervalFromString() {
+        do {
+            let formatter = TimeIntervalFormatter()
+            formatter.style = .full
+            formatter.fractionDigits = 3
+            let ti:TimeInterval = 86400.0 + (2.0 * 3600.0) + (3.0 * 60.0) + 4.567
+            XCTAssertEqual(ti, formatter.timeInterval(from: "1:02:03:04.567"))
+        }
+        do {
+            let formatter = TimeIntervalFormatter()
+            formatter.style = .full
+            formatter.daysUnitSymbol = " days"
+            formatter.hoursUnitSymbol = " hours"
+            formatter.minutesUnitSymbol = " minutes"
+            formatter.secondsUnitSymbol = " seconds"
+            formatter.daysSeparator = ", "
+            formatter.hoursSeparator = ", "
+            formatter.minutesSeparator = ", "
+            formatter.fractionDigits = 3
+            let ti = TimeInterval(86400 + 3600 + 60 + 1.123)
+            XCTAssertEqual(ti, formatter.timeInterval(from: "1 days, 01 hours, 01 minutes, 01.123 seconds"))
         }
     }
     func test_randomTimeIntervals() {

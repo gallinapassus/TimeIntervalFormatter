@@ -99,39 +99,40 @@ public class TimeIntervalFormatter : Formatter, Codable {
 
             // Special cases .hhmm and .dhhmm
             if style == .hhmm {
-                try _consumeSeparator(&parse, separator: minutesSeparator)
+                try _consume(minutesSeparator, from: &parse)
                 let mm = try _parseNumber(&parse, count: 2, validRange: 0...59)
-                try _consumeSeparator(&parse, separator: hoursSeparator)
+                try _consume(hoursSeparator, from: &parse)
                 let hh = try _parseNumber(&parse, count: 2, validRange: 0...23)
                 return multiplier * TimeInterval(mm * 60 + hh * 3600)
             }
             else if style == .dhhmm {
-                try _consumeSeparator(&parse, separator: minutesSeparator)
+                try _consume(minutesSeparator, from: &parse)
                 let mm = try _parseNumber(&parse, count: 2, validRange: 0...59)
-                try _consumeSeparator(&parse, separator: hoursSeparator)
+                try _consume(hoursSeparator, from: &parse)
                 let hh = try _parseNumber(&parse, count: 2, validRange: 0...23)
-                try _consumeSeparator(&parse, separator: daysSeparator)
+                try _consume(daysSeparator, from: &parse)
                 let d = try _parseNumber(&parse, count: parse.count, validRange: 0...Self.decade)
                 return multiplier * TimeInterval(mm * 60 + hh * 3600 + d * 86400)
             }
             
             // Rest of the cases
-            try _consumeSeparator(&parse, separator: secondsSeparator)
+            try _consume(secondsUnitSymbol, from: &parse)
             let expectedFractionCount = Swift.max(0, Swift.min(fractionDigits, Self.maxFractionDigits))
             var fractions:TimeInterval = 0.0
             if expectedFractionCount > 0 {
                 fractions = try TimeInterval(_parseNumber(&parse, count: expectedFractionCount, validRange: 0...999999)) / pow(10.0, TimeInterval(expectedFractionCount))
-                try _consumeSeparator(&parse, separator: fractionSeparator)
+                try _consume(fractionSeparator, from: &parse)
             }
             let ss = try _parseNumber(&parse, count: 2, validRange: 0...59)
             
             var accumulated = TimeInterval(ss) + fractions
-            // Are we expecting minutes?
+            // Are we done yet?
             if style == .ssf || style == .required, parse.isEmpty {
                 return multiplier * accumulated
             }
             if style == .mmssf || style == .hhmmssf || style == .dhhmmssf || style == .full || style == .required {
-                try _consumeSeparator(&parse, separator: minutesSeparator)
+                try _consume(minutesSeparator, from: &parse)
+                try _consume(minutesUnitSymbol, from: &parse)
                 let mm = try _parseNumber(&parse, count: 2, validRange: 0...59)
                 accumulated += TimeInterval(mm * 60)
                 if style == .mmssf || style == .required, parse.isEmpty {
@@ -139,7 +140,8 @@ public class TimeIntervalFormatter : Formatter, Codable {
                 }
             }
             if style == .hhmmssf || style == .dhhmmssf || style == .full || style == .required {
-                try _consumeSeparator(&parse, separator: hoursSeparator)
+                try _consume(hoursSeparator, from: &parse)
+                try _consume(hoursUnitSymbol, from: &parse)
                 let hh = try _parseNumber(&parse, count: 2, validRange: 0...23)
                 accumulated += TimeInterval(hh * 3600)
                 if style == .hhmmssf || style == .required, parse.isEmpty {
@@ -147,7 +149,8 @@ public class TimeIntervalFormatter : Formatter, Codable {
                 }
             }
             if style == .dhhmmssf || style == .full || style == .required {
-                try _consumeSeparator(&parse, separator: daysSeparator)
+                try _consume(daysSeparator, from: &parse)
+                try _consume(daysUnitSymbol, from: &parse)
                 let d = try _parseNumber(&parse, count: parse.count, validRange: 0...Self.decade)
                 accumulated += TimeInterval(d * 86400)
                 if parse.isEmpty {
@@ -169,22 +172,22 @@ public class TimeIntervalFormatter : Formatter, Codable {
         let fs = fracCount > 0 ? "\(fractionSeparator)\(fracs)" : ""
         switch style {
         case .full, .dhhmmssf, .required:
-            return "\(symbol)\(daysSeparator)\(symbol)\(symbol)\(hoursSeparator)\(symbol)\(symbol)\(minutesSeparator)\(symbol)\(symbol)\(fs)\(secondsSeparator)"
+            return "\(symbol)\(daysUnitSymbol)\(daysSeparator)\(symbol)\(symbol)\(hoursUnitSymbol)\(hoursSeparator)\(symbol)\(symbol)\(minutesUnitSymbol)\(minutesSeparator)\(symbol)\(symbol)\(fs)\(secondsUnitSymbol)"
         case .dhhmm:
-            return "\(symbol)\(daysSeparator)\(symbol)\(symbol)\(hoursSeparator)\(symbol)\(symbol)\(minutesSeparator)"
+            return "\(symbol)\(daysUnitSymbol)\(daysSeparator)\(symbol)\(symbol)\(hoursUnitSymbol)\(hoursSeparator)\(symbol)\(symbol)\(minutesUnitSymbol)"
         case .hhmm:
-            return "\(symbol)\(symbol)\(hoursSeparator)\(symbol)\(symbol)\(minutesSeparator)"
+            return "\(symbol)\(symbol)\(hoursUnitSymbol)\(hoursSeparator)\(symbol)\(symbol)\(minutesUnitSymbol)"
         case .hhmmssf:
-            return "\(symbol)\(symbol)\(hoursSeparator)\(symbol)\(symbol)\(minutesSeparator)\(symbol)\(symbol)\(fs)\(secondsSeparator)"
+            return "\(symbol)\(symbol)\(hoursUnitSymbol)\(hoursSeparator)\(symbol)\(symbol)\(minutesUnitSymbol)\(minutesSeparator)\(symbol)\(symbol)\(fs)\(secondsUnitSymbol)"
         case .mmssf:
-            return "\(symbol)\(symbol)\(minutesSeparator)\(symbol)\(symbol)\(fs)\(secondsSeparator)"
+            return "\(symbol)\(symbol)\(minutesUnitSymbol)\(minutesSeparator)\(symbol)\(symbol)\(fs)\(secondsUnitSymbol)"
         case .ssf:
-            return "\(symbol)\(symbol)\(fs)\(secondsSeparator)"
+            return "\(symbol)\(symbol)\(fs)\(secondsUnitSymbol)"
         }
     }
     /// Genrates the formatted and styled string for the given value
     private func _getFormattedString(_ s:TimeIntervalFormatter.Style, value:TimeInterval) -> String {
-        var stack:[String] = value < 0.0 ? [negativeSymbol] : (positiveSymbol.isEmpty ? [] : [positiveSymbol])
+        var stack:[String] = value < 0.0 ? [negativeTimeIntervalSymbol] : (positiveTimeIntervalSymbol.isEmpty ? [] : [positiveTimeIntervalSymbol])
 
         let multiplier = pow(10.0, Double(fractionDigits))
         let roundedFraction = (((value - Double(Int(value))) * multiplier).rounded() / multiplier).magnitude
@@ -195,11 +198,11 @@ public class TimeIntervalFormatter : Formatter, Codable {
         let formattedFractions:String
         if roundedFraction >= 1.0 {
             integer = Int(value.magnitude) + 1
-            formattedFractions = String(format: formatString, 0, secondsSeparator)
+            formattedFractions = String(format: formatString, 0, secondsUnitSymbol)
         }
         else {
             integer = Int(value.magnitude)
-            formattedFractions = String(format: formatString, roundedFractionAsInt, secondsSeparator)
+            formattedFractions = String(format: formatString, roundedFractionAsInt, secondsUnitSymbol)
         }
 
         let ddd:Int = integer / 86400
@@ -215,53 +218,53 @@ public class TimeIntervalFormatter : Formatter, Codable {
         switch s {
         case .dhhmmssf, .full, .dhhmm:
             if integer > Self.decade {
-                let unit = "\(overflowSymbol)\(overflowSymbol)"
-                stack.append( "\(overflowSymbol)\(daysSeparator)\(unit)\(hoursSeparator)\(unit)\(minutesSeparator)")
+                let pair = "\(overflowSymbol)\(overflowSymbol)"
+                stack.append( "\(overflowSymbol)\(daysUnitSymbol)\(daysSeparator)\(pair)\(hoursUnitSymbol)\(hoursSeparator)\(pair)\(minutesUnitSymbol)\(minutesSeparator)")
                 overflow = true
                 if s != .dhhmm {
-                    stack.append("\(unit)\(secondsSeparator)")
+                    stack.append("\(pair)\(secondsUnitSymbol)")
                 }
             }
             else {
                 stack.append(
-                    String(format: "%d%@%02d%@%02d%@",
-                           ddd, daysSeparator,
-                           hh, hoursSeparator,
-                           mm, minutesSeparator)
+                    String(format: "%d%@%@%02d%@%@%02d%@",
+                           ddd, daysUnitSymbol, daysSeparator,
+                           hh, hoursUnitSymbol, hoursSeparator,
+                           mm, minutesUnitSymbol/*, minutesSeparator*/)
                 )
                 if s != .dhhmm {
-                    stack.append(String(format: "%02d%@", ss, _emptyOrSeconds))
+                    stack.append(String(format: "%@%02d%@", minutesSeparator, ss, _emptyOrSecondsUnit))
                 }
             }
         case .hhmmssf, .hhmm:
             if integer > 86399 {
-                let unit = "\(overflowSymbol)\(overflowSymbol)"
-                stack.append( "\(unit)\(hoursSeparator)\(unit)\(minutesSeparator)")
+                let pair = "\(overflowSymbol)\(overflowSymbol)"
+                stack.append( "\(pair)\(hoursUnitSymbol)\(hoursSeparator)\(pair)\(minutesUnitSymbol)\(minutesSeparator)")
                 if s != .hhmm {
-                    stack.append( "\(unit)\(secondsSeparator)")
+                    stack.append( "\(pair)\(secondsUnitSymbol)")
                 }
                 overflow = true
             }
             else {
                 stack.append(
-                    String(format: "%02d%@%02d%@",
-                           hh, hoursSeparator,
-                           mm, minutesSeparator)
+                    String(format: "%02d%@%@%02d%@",
+                           hh, hoursUnitSymbol, hoursSeparator,
+                           mm, minutesUnitSymbol/*, minutesSeparator*/)
                 )
                 if s != .hhmm {
-                    stack.append(String(format: "%02d%@", ss, _emptyOrSeconds))
+                    stack.append(String(format: "%@%02d%@", minutesSeparator, ss, _emptyOrSecondsUnit))
                 }
             }
         case .mmssf:
             if integer > 3599 {
-                let unit = "\(overflowSymbol)\(overflowSymbol)"
-                stack.append( "\(unit)\(minutesSeparator)\(unit)\(secondsSeparator)")
+                let pair = "\(overflowSymbol)\(overflowSymbol)"
+                stack.append( "\(pair)\(minutesSeparator)\(pair)\(secondsUnitSymbol)")
                 overflow = true
             }
             else {
-                stack.append(String(format: "%02d%@%02d%@",
-                                    mm, minutesSeparator,
-                                    ss, _emptyOrSeconds))
+                stack.append(String(format: "%02d%@%@%02d%@",
+                                    mm, minutesUnitSymbol, minutesSeparator,
+                                    ss, _emptyOrSecondsUnit))
             }
         case .ssf:
             if integer > 59 {
@@ -269,7 +272,7 @@ public class TimeIntervalFormatter : Formatter, Codable {
                 overflow = true
             }
             else {
-                stack.append(String(format: "%02d%@", integer, secondsSeparator))
+                stack.append(String(format: "%02d%@", integer, secondsUnitSymbol))
             }
         case .required: fatalError() // .required is never used here
         }
@@ -360,8 +363,8 @@ public class TimeIntervalFormatter : Formatter, Codable {
         }
     }
     private var _fractionDigits:Int = 0
-    private var _emptyOrSeconds:String {
-        _fractionDigits > 0 ? "" : "\(secondsSeparator)"
+    private var _emptyOrSecondsUnit:String {
+        _fractionDigits > 0 ? "" : "\(secondsUnitSymbol)"
     }
     /// Use this symbol in-place of numbers when TimeInterval overflows the given style.
     ///
@@ -373,15 +376,15 @@ public class TimeIntervalFormatter : Formatter, Codable {
     ///     formatter.style = .mmssf
     ///     formatter.overflowSymbol = "~"
     ///     formatter.string(from: TimeInterval(3600)) // ~~:~~
-    public var overflowSymbol:String    = "*"
+    public var overflowSymbol:String = "*"
     /// Use this symbol to indicate a negative time interval.
     ///
     /// Default symbol: `-`
-    public var negativeSymbol:String    = "-"
+    public var negativeTimeIntervalSymbol:String = "-"
     /// Use this symbol to indicate a positive time interval.
     ///
     /// Default symbol: `empty string`
-    public var positiveSymbol:String    = ""
+    public var positiveTimeIntervalSymbol:String = ""
     /// Use this symbol to separate seconds from fractions of seconds.
     ///
     /// Default symbol: `.`
@@ -394,22 +397,34 @@ public class TimeIntervalFormatter : Formatter, Codable {
     ///     formatter.fractionSeparator = "´"
     ///     formatter.string(from: TimeInterval(123.45)) // 02:03´45
     public var fractionSeparator:String = "."
-    /// Use this symbol at the end of seconds (or fractions of seconds).
+    /// Unit symbol for seconds.
     ///
     /// Default symbol: `empty string`
-    public var secondsSeparator:String  = ""
+    public var secondsUnitSymbol:String  = ""
     /// Use this symbol to separate minutes from seconds.
     ///
     /// Default separator: `:`
     public var minutesSeparator:String  = ":"
+    /// Unit symbol for minutes.
+    ///
+    /// Default symbol: `empty string`
+    public var minutesUnitSymbol:String  = ""
     /// Use this symbol to separate hours from minutes.
     ///
     /// Default separator: `:`
     public var hoursSeparator:String    = ":"
+    /// Unit symbol for hours.
+    ///
+    /// Default symbol: `empty string`
+    public var hoursUnitSymbol:String  = ""
     /// Use this symbol to separate days from hours.
     ///
     /// Default separator: `:`
     public var daysSeparator:String     = ":"
+    /// Unit symbol for days.
+    ///
+    /// Default symbol: `empty string`
+    public var daysUnitSymbol:String  = ""
     /// Use this symbol to indicate that given time interval was not representable
     /// by this formatter (for example a nil value).
     ///
@@ -421,7 +436,7 @@ public class TimeIntervalFormatter : Formatter, Codable {
     ///     formatter.style = .full
     ///     formatter.string(from: nil) // -:--:--:--
 
-    public var nanSymbol:String         = "-"
+    public var nanSymbol:String = "-"
     /// Maximum number of fraction digits to show.
     private static let maxFractionDigits = 6
     /// Number of seconds in an imaginary decade (a sum of ten 365 day years).
@@ -440,7 +455,7 @@ fileprivate enum ParseFailure : Error { case fail }
 // MARK: -
 fileprivate extension TimeIntervalFormatter {
     private func _parseSign(_ str:inout String) throws -> TimeInterval {
-        switch (negativeSymbol.isEmpty, positiveSymbol.isEmpty) {
+        switch (negativeTimeIntervalSymbol.isEmpty, positiveTimeIntervalSymbol.isEmpty) {
         case (true, true): // Expect numbers
             if let c = str.first, c.isNumber {
                 return 1.0
@@ -449,7 +464,7 @@ fileprivate extension TimeIntervalFormatter {
                 throw ParseFailure.fail
             }
         case (false, true): // Expect 'negativeSymbol' or number
-            if let r = str.range(of: negativeSymbol), r.lowerBound == str.startIndex {
+            if let r = str.range(of: negativeTimeIntervalSymbol), r.lowerBound == str.startIndex {
                 str = "\(str[r.upperBound...])"
                 return -1.0
             }
@@ -461,7 +476,7 @@ fileprivate extension TimeIntervalFormatter {
                 throw ParseFailure.fail
             }
         case (true, false): // Expect 'positiveSymbol' or number
-            if let r = str.range(of: positiveSymbol), r.lowerBound == str.startIndex {
+            if let r = str.range(of: positiveTimeIntervalSymbol), r.lowerBound == str.startIndex {
                 str = "\(str[r.upperBound...])"
                 return 1.0
             }
@@ -473,11 +488,11 @@ fileprivate extension TimeIntervalFormatter {
                 throw ParseFailure.fail
             }
         case (false, false): // Expect 'negativeSymbol' or 'positiveSymbol'
-            if let r = str.range(of: negativeSymbol) {
+            if let r = str.range(of: negativeTimeIntervalSymbol) {
                 str = "\(str[r.upperBound...])"
                 return -1.0
             }
-            else if let r = str.range(of: positiveSymbol) {
+            else if let r = str.range(of: positiveTimeIntervalSymbol) {
                 str = "\(str[r.upperBound...])"
                 return 1.0
             }
@@ -496,14 +511,14 @@ fileprivate extension TimeIntervalFormatter {
         return numberPart
     }
     // MARK: -
-    private func _consumeSeparator(_ str:inout String, separator:String) throws {
-        guard separator.isEmpty == false else {
+    private func _consume(_ string:String, from target:inout String) throws {
+        guard string.isEmpty == false else {
             return
         }
-        guard let separatorStart = str.index(str.endIndex, offsetBy: -separator.count, limitedBy: str.startIndex),
-            str[separatorStart...] == separator else {
+        guard let separatorStart = target.index(target.endIndex, offsetBy: -string.count, limitedBy: target.startIndex),
+            target[separatorStart...] == string else {
             throw ParseFailure.fail
         }
-        str = "\(str[..<separatorStart])"
+        target = "\(target[..<separatorStart])"
     }
 }
